@@ -21,12 +21,14 @@ broker ──> on_message (main.c)
 
 | File | Role | Platform-specific? |
 |---|---|---|
-| `main.c` | Connects to the broker (libmosquitto), reads the clock, wires the modules together | Yes (Linux) |
-| `mqtt_topics.c/.h` | Topic table: topic → handler. Calls the telemetry handler registered by `main` | No |
-| `mqtt_decode.c/.h` | Decodes the JSON payload into a `telemetry_t` (one `has_` flag per field) | No |
-| `cJSON.c/.h` | JSON parser (third-party) | No |
-| `vehicle_state.c/.h` | Latest value of every field + when it was received | No |
-| `display.c/.h` | Prints the state on one terminal line | No (uses `printf`) |
+| `src/main.c` | Connects to the broker (libmosquitto), reads the clock, wires the modules together | Yes (Linux) |
+| `src/mqtt_topics.c/.h` | Topic table: topic → handler. Calls the telemetry handler registered by `main` | No |
+| `src/mqtt_decode.c/.h` | Decodes the JSON payload into a `telemetry_t` (one `has_` flag per field) | No |
+| `lib/cjson/cJSON.c/.h` | JSON parser (third-party) | No |
+| `src/vehicle_state.c/.h` | Latest value of every field + when it was received | No |
+| `src/display.c/.h` |
+| `src/ui.h` | Contract between the core and the LVGL screen (`dashboard_state_t`, `ui_init`, `ui_update`) | No |
+| `tests/test_decode.c` | Decoder tests, run on any PC | No | Prints the state on one terminal line | No (uses `printf`) |
 
 Only `main.c` depends on Linux. Everything else can compile on the STM32 unchanged.
 
@@ -37,7 +39,7 @@ Only `main.c` depends on Linux. Everything else can compile on the STM32 unchang
 ### main.c
 
 - **Subscribe in `on_connect`, not in `main`.** The client uses a clean session, so the broker forgets subscriptions on disconnect. `on_connect` runs on every (re)connection, so the subscription is restored automatically.
-- **Broker address is an argument, default `localhost`.** `./untitled <host> [port]`. Changing broker never requires a code change.
+- **Broker address is an argument, default `localhost`.** `./uosm_dashboard <host> [port]`. Changing broker never requires a code change.
 - **`mosquitto_loop_forever` is kept.** The display reacts to messages, so `main` never needs control back. (See section 5 for when this changes.)
 - **Clock: `CLOCK_MONOTONIC`.** We only measure durations (ages). The Pi has no battery-backed clock, so wall-clock time can jump at boot when it syncs; the monotonic clock never jumps.
 - **The clock is read once per message** and the same `now` is passed to both `vehicle_state_update` and `display_print`, so fields that just arrived have an age of exactly 0.
@@ -78,21 +80,21 @@ The state does **not** decide what "too old" means. That is the display's job.
 
 ### Build (CLion, remote toolchain on the Pi)
 
-```cmake
-project(untitled C)
-add_executable(untitled main.c mqtt_topics.c mqtt_decode.c cJSON.c vehicle_state.c display.c)
-target_link_libraries(untitled mosquitto)
-```
+The root `CMakeLists.txt` builds two executables:
+
+- `uosm_dashboard`: the dashboard (`src/` + `lib/cjson/`, linked with `mosquitto`)
+- `test_decode`: the decoder tests (no broker needed)
 
 - The project is **C, not C++**: `main.c`, not `main.cpp` (C++ name mangling breaks linking with the C files).
-- Every `.c` file must be listed in `add_executable`, otherwise the link fails with `undefined reference`.
+- Every new `.c` file must be added to `CORE_SOURCES` in `CMakeLists.txt`, otherwise the link fails with `undefined reference`.
 - Pi packages: `sudo apt install libmosquitto-dev mosquitto-clients`
 
 ### Run
 
 ```bash
-./untitled              # broker on the Pi (localhost)
-./untitled <broker_ip>  # another broker
+./uosm_dashboard              # broker on the Pi (localhost)
+./uosm_dashboard <broker_ip>  # another broker
+./test_decode                 # decoder tests
 ```
 
 ### Test without the telemetry board
@@ -124,7 +126,6 @@ If nothing prints: check the topic is exactly `uosm/car1/tlm` (other topics are 
 | **Per-field stale thresholds** | Real publish rates of each field are known. | Replace `STALE_S` with one threshold per field (≈ 2–3× its period). |
 | **Mutex in `vehicle_state`** | MQTT moved to its own thread (`mosquitto_loop_start`), e.g. for a GUI. | Lock around `update` and around the copy in `snapshot`. Not needed while everything runs on one thread. |
 | **Start at boot / retry if broker is down** | The Pi runs headless in the car. Today, if the broker isn't reachable at startup, the program exits. | systemd service with `After=network-online.target`, `Restart=on-failure`, `RestartSec=2`. No code change. |
-| **New `mqtt_topics`** | Partner's rewrite is ready. | Swap the file. Keep `mqtt_topics_dispatch(topic, payload, len)` and the telemetry handler registration, or update `main.c` accordingly. |
 | **New topics** | A new message type is defined. | Add it to `docs/MQTT_TOPICS.md` first, then one line in the topic table, then the matching fields in `vehicle_state` and `display`. |
 | **Broker location** | Team decision on the car's network (CAN / MQTT / mix). | Only the launch argument changes. If the broker must accept other machines: `listener 1883` + `allow_anonymous true` (or credentials) in its config. Note: the Pi Zero 2 W has no Ethernet port (USB adapter or HAT needed for wired MQTT). |
 | **Unique client ID** | Two dashboards (or two instances) on the same broker. | `"uosm-dashboard"` is fixed; two clients with the same ID kick each other off. Make it an argument or add a suffix. |
@@ -137,13 +138,10 @@ If nothing prints: check the topic is exactly `uosm/car1/tlm` (other topics are 
 
 ## 6. Next steps
 
-1. **Put the code on GitHub** (`itoure12/UOSM-DASHBOARD-PI`). The local folder is not a Git repo and the GitHub layout differs (`lib/cjson/`). Clone the repo into a new folder, check its structure, copy the files into the right places, commit on a branch, open a pull request.
-2. **Silence detection** (own loop instead of `mosquitto_loop_forever`).
-3. **systemd service** so the dashboard starts at boot and retries until the broker is up.
-4. **Integrate the partner's `mqtt_topics`** when ready.
-5. **Real screen**, once the display hardware is chosen.
+1. **Silence detection** (own loop instead of `mosquitto_loop_forever`).
+2. **systemd service** so the dashboard starts at boot and retries until the broker is up.
+3. **LVGL screen** (`src/ui.c`, contract in `src/ui.h`), on the Pi's 1600x900 HDMI screen.
 
 Open questions:
 - How often does the car publish on `uosm/car1/tlm`? (confirms or adjusts the 2 s threshold)
 - Where does the broker live in the final car?
-- What screen will the Pi drive?
