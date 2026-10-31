@@ -43,3 +43,8 @@ endif()
 add_executable(test_decode tests/test_decode.c src/mqtt_topics.c src/mqtt_decode.c lib/cjson/cJSON.c)
 target_include_directories(test_decode PRIVATE src lib/cjson)
 target_link_libraries(test_decode PRIVATE m)
+
+# dashboard_state tests, no screen needed: ./test_dashboard_state
+add_executable(test_dashboard_state tests/test_dashboard_state.c src/dashboard_state.c src/vehicle_state.c)
+target_include_directories(test_dashboard_state PRIVATE src lib/cjson)
+target_link_libraries(test_dashboard_state PRIVATE m)
