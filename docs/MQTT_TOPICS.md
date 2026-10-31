@@ -25,10 +25,10 @@ Example:
 | Field | Unit | Shown as | Screen |
 |---|---|---|---|
 | `spd` | km/h | Speed (Hall-effect sensor) | Main, large |
-| `v` | V | Battery voltage | Main |
-| `i` | A | Battery current | Main |
-| `e` | J per second | Power, in W (energy over one second = average power) | Main |
-| `thr` | % | Throttle | Main |
+| `v` | V | Battery voltage | Terminal only (possible second view) |
+| `i` | A | Battery current | Terminal only (possible second view) |
+| `e` | J per second | Power, in W (energy over one second = average power) | Terminal only (possible second view) |
+| `thr` | % | Throttle | Terminal only (possible second view) |
 | `lts` | 5 characters `0`/`1` | Indicators: headlight, running lights, left turn, right turn, wiper | Main |
 | `dist` | m | Distance traveled | Main |
 | `ts` | ms, UTC epoch (GPS) | Age of the last message | Debug |
@@ -36,6 +36,8 @@ Example:
 
 Not shown (kept for the server and analysis): `lat`, `lon`, `alt`, `ax`, `ay`, `az`,
 `ap`, `l1`, `l2`.
+
+The dashboard records nothing: the server already receives and stores all the telemetry.
 
 ### Dashboard behaviour
 
