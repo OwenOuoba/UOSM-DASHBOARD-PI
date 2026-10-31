@@ -3,11 +3,10 @@
 #include "display.h"
 
 #include <mosquitto.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-#define TOPIC_ALL "uosm/#"
 
 static double now_s(void) {
     struct timespec t;
@@ -15,7 +14,20 @@ static double now_s(void) {
     return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
 }
 
+/* Newest GPS timestamp (ts) accepted so far. */
+static int64_t s_last_ts = INT64_MIN;
+
 static void on_telemetry(const telemetry_t* t) {
+    /* QoS 1 may deliver a message twice, and a late message must never replace
+     * a newer one: a message whose ts is not newer than the last one is ignored.
+     * Messages without ts are accepted (no way to compare them). */
+    if (t->has_ts) {
+        if (t->ts <= s_last_ts) {
+            return;
+        }
+        s_last_ts = t->ts;
+    }
+
     double now = now_s();
     vehicle_state_update(t, now);
     display_print(now);
@@ -29,14 +41,26 @@ static void on_connect(struct mosquitto* mosq, void* userdata, int rc) {
         fprintf(stderr, "Broker refused the connection: %s\n", mosquitto_connack_string(rc));
         return;
     }
-    printf("Connected to broker, subscribing to %s\n", TOPIC_ALL);
-    mosquitto_subscribe(mosq, NULL, TOPIC_ALL, 0);
+    /* QoS 1, as required by the Telemetry V2 specification */
+    printf("Connected to broker, subscribing to %s\n", TOPIC_TELEMETRY);
+    int sub_rc = mosquitto_subscribe(mosq, NULL, TOPIC_TELEMETRY, 1);
+    if (sub_rc != MOSQ_ERR_SUCCESS) {
+        fprintf(stderr, "Subscribe to %s failed: %s\n", TOPIC_TELEMETRY, mosquitto_strerror(sub_rc));
+    }
 }
 
 /* Called for every received message: same entry point as the STM32 transports. */
 static void on_message(struct mosquitto* mosq, void* userdata, const struct mosquitto_message* msg) {
     (void)mosq;
     (void)userdata;
+
+    /* Retained message: the last sample the broker kept, sent right after we
+     * subscribe. It can be hours old but would get an age of 0 here, so it is
+     * never shown as live. Cost: "--" for at most 1 s at startup (1 Hz). */
+    if (msg->retain) {
+        return;
+    }
+
     const char* payload = msg->payload ? (const char*)msg->payload : "";
     mqtt_topics_dispatch(msg->topic, payload, (size_t)msg->payloadlen);
 }

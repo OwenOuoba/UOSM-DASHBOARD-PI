@@ -25,10 +25,10 @@ broker ──> on_message (main.c)
 | `src/mqtt_topics.c/.h` | Topic table: topic → handler. Calls the telemetry handler registered by `main` | No |
 | `src/mqtt_decode.c/.h` | Decodes the JSON payload into a `telemetry_t` (one `has_` flag per field) | No |
 | `lib/cjson/cJSON.c/.h` | JSON parser (third-party) | No |
-| `src/vehicle_state.c/.h` | Latest value of every field + when it was received | No |
-| `src/display.c/.h` |
+| `src/vehicle_state.c/.h` | Latest value of every field + when it was received; `STALE_S` threshold | No |
+| `src/display.c/.h` | Prints the state on one terminal line | No (uses `printf`) |
 | `src/ui.h` | Contract between the core and the LVGL screen (`dashboard_state_t`, `ui_init`, `ui_update`) | No |
-| `tests/test_decode.c` | Decoder tests, run on any PC | No | Prints the state on one terminal line | No (uses `printf`) |
+| `tests/test_decode.c` | Decoder tests, run on any PC | No |
 
 Only `main.c` depends on Linux. Everything else can compile on the STM32 unchanged.
 
@@ -44,6 +44,9 @@ Only `main.c` depends on Linux. Everything else can compile on the STM32 unchang
 - **Clock: `CLOCK_MONOTONIC`.** We only measure durations (ages). The Pi has no battery-backed clock, so wall-clock time can jump at boot when it syncs; the monotonic clock never jumps.
 - **The clock is read once per message** and the same `now` is passed to both `vehicle_state_update` and `display_print`, so fields that just arrived have an age of exactly 0.
 - **Setup before connecting.** `vehicle_state_init()` and `mqtt_topics_set_telemetry_handler()` are called before `mosquitto_connect`, so no early message is lost.
+- **Subscribe to `TOPIC_TELEMETRY` in QoS 1.** The topic name is defined once, in `mqtt_topics.h`, and used by both the topic table and the subscription. QoS 1 is what the Telemetry V2 specification requires. The return value of `mosquitto_subscribe` is checked.
+- **Retained message dropped** (`on_message`, `msg->retain`). Right after subscribing, the broker sends the last sample it kept. It can be hours old, but its age is measured from its arrival, so it would look fresh. Dropping it costs `--` for at most 1 s at startup.
+- **Duplicates and late messages dropped** (`on_telemetry`, `s_last_ts`). QoS 1 may deliver a message twice. A message whose `ts` is not newer than the last accepted one is ignored, so a late message never replaces a newer value. Messages without `ts` are accepted (nothing to compare).
 
 ### mqtt_topics
 
@@ -57,7 +60,7 @@ Only `main.c` depends on Linux. Everything else can compile on the STM32 unchang
 3. **Who reads the clock: the caller.** `vehicle_state` takes `now_s` as a parameter. It stays free of any OS/board dependency and can be tested with fake times.
 4. **How the display reads: a snapshot.** `vehicle_state_snapshot()` copies the data out and computes every age with the same `now`. The display can't modify the real state, all values come from the same instant, and a lock (if ever needed) only covers the copy.
 
-The state does **not** decide what "too old" means. That is the display's job.
+The state does **not** apply the "too old" rule: it only stores times. The threshold `STALE_S` is defined in `vehicle_state.h` only so that every display (terminal, screen) uses the same value.
 
 ### display
 
@@ -68,10 +71,11 @@ The state does **not** decide what "too old" means. That is the display's job.
   | Case | Shown as |
   |---|---|
   | never received | `v=---` |
-  | older than 2 s | `v=48.20(5s)` |
+  | older than `STALE_S` | `v=48.20(5s)` |
   | fresh | `v=48.20` |
 
-- **Stale threshold: 2 s for every field** (`STALE_S` in `display.c`). Rule used: about 2–3× the expected publish period. Assumes ~1 Hz publishing; not confirmed yet.
+- **Stale threshold: 3 s for every field** (`STALE_S` in `vehicle_state.h`). Rule used: about 2–3× the expected publish period. At 1 Hz, one lost message is tolerated and the second one is reported (with 2 s, a single lost message would already flag the value). Assumes ~1 Hz publishing; not confirmed yet.
+- **Terminal and screen differ on purpose:** the terminal shows a stale value with its age (useful for debugging), the future screen shows `--` (`valid = false` in `ui.h`), because the driver only needs to know whether to trust it.
 - `has_` is always checked before the age: the age of a never-received field is meaningless.
 
 ---
@@ -107,11 +111,13 @@ Terminal 2:
 
 ```bash
 mosquitto_pub -t uosm/car1/tlm -m '{"spd":12.5,"v":48.2,"i":3.1,"lts":"10100"}'
-# wait 3–4 s
+# wait 4–5 s (more than STALE_S = 3 s)
 mosquitto_pub -t uosm/car1/tlm -m '{"spd":13.0}'
 ```
 
 Expected: the second line shows `spd=13.0` fresh and `v`, `i`, `lts` with their age.
+
+Notes: do not add `-r` (retain) to these commands, retained messages are ignored by design. These test messages have no `ts`, so the duplicate filter accepts them all; to test it, send the same message with a `ts` twice: the second one is ignored.
 
 If nothing prints: check the topic is exactly `uosm/car1/tlm` (other topics are ignored), check the JSON is valid, and check the broker receives it with `mosquitto_sub -t "uosm/#" -v`.
 
@@ -129,7 +135,8 @@ If nothing prints: check the topic is exactly `uosm/car1/tlm` (other topics are 
 | **New topics** | A new message type is defined. | Add it to `docs/MQTT_TOPICS.md` first, then one line in the topic table, then the matching fields in `vehicle_state` and `display`. |
 | **Broker location** | Team decision on the car's network (CAN / MQTT / mix). | Only the launch argument changes. If the broker must accept other machines: `listener 1883` + `allow_anonymous true` (or credentials) in its config. Note: the Pi Zero 2 W has no Ethernet port (USB adapter or HAT needed for wired MQTT). |
 | **Unique client ID** | Two dashboards (or two instances) on the same broker. | `"uosm-dashboard"` is fixed; two clients with the same ID kick each other off. Make it an argument or add a suffix. |
-| **Robustness fixes** | Before the car, or when chasing a silent failure. | Check return values of `mosquitto_subscribe` / `mosquitto_loop_forever`; handle Ctrl+C cleanly; validate the port instead of `atoi`. |
+| **Real age from `ts`** | The dashboard's broker is outside the car (e.g. the server), so it can receive the burst of buffered messages the telemetry sends after a link loss (specification rule 5). Today these late messages are dropped only if older than the last one received; a burst arriving after the link comes back would still be shown as fresh. | Estimate the offset between GPS time and the monotonic clock (largest `ts − arrival` seen = live messages), store each field with its measurement time instead of its arrival time, and only overwrite a field with a newer measurement. Not needed if the broker is inside the car. |
+| **Robustness fixes** | Before the car, or when chasing a silent failure. | Check the return value of `mosquitto_loop_forever`; handle Ctrl+C cleanly; validate the port instead of `atoi`. (`mosquitto_subscribe` is now checked.) |
 | **Display decimals** | Units and precision of each field are confirmed. | Adjust the `decimals` argument of each `print_num` call in `display.c`. |
 | **Build output location** | Now. CLion builds in `/tmp`, which is wiped at every reboot of the Pi. | Change the deployment mapping in CLion to a permanent folder (e.g. `/home/user/uosm/`), or copy the executable there. |
 | **Header comment of `main.c`** | Now. It still says "Debian VM". | Update to Raspberry Pi Zero 2 W. |
@@ -143,5 +150,5 @@ If nothing prints: check the topic is exactly `uosm/car1/tlm` (other topics are 
 3. **LVGL screen** (`src/ui.c`, contract in `src/ui.h`), on the Pi's 1600x900 HDMI screen.
 
 Open questions:
-- How often does the car publish on `uosm/car1/tlm`? (confirms or adjusts the 2 s threshold)
+- How often does the car publish on `uosm/car1/tlm`? (confirms or adjusts the 3 s threshold)
 - Where does the broker live in the final car?

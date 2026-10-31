@@ -3,7 +3,7 @@
  *
  * Prints one line per call with every telemetry field:
  *   never received -> name=---
- *   older than 2 s -> name=value(age s)
+ *   stale          -> name=value(age s)   (older than STALE_S, vehicle_state.h)
  *   fresh          -> name=value
  */
 #ifndef DISPLAY_H

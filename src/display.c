@@ -5,9 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-/* A field older than this is shown with its age. */
-#define STALE_S 2.0
-
+/* A field older than STALE_S (vehicle_state.h) is shown with its age. */
 static void print_age_if_stale(double age) {
     if (age > STALE_S) {
         printf("(%.0fs)", age);

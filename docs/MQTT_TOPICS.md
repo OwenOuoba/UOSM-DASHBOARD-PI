@@ -13,8 +13,8 @@ Rule: a topic or field is added **here first**, then in the code.
 | Topic | `uosm/car1/tlm` |
 | Rate | 1 Hz (one message per second) |
 | Payload | one flat JSON object, units fixed by the specification, never in the payload |
-| QoS / retain | QoS 1, retained: the dashboard gets the last sample as soon as it connects |
-| Broker | `MQTT_HOST` environment variable (default `localhost`) |
+| QoS / retain | QoS 1 (the dashboard subscribes in QoS 1). The message is retained by the broker, but the dashboard **ignores the retained copy** (see behaviour below) |
+| Broker | Command-line argument: `./uosm_dashboard <broker> [port]` (default `localhost 1883`) |
 
 Example:
 
@@ -43,8 +43,19 @@ Not shown (kept for the server and analysis): `lat`, `lon`, `alt`, `ax`, `ay`, `
 - An invalid payload is ignored; the dashboard never crashes because of it.
 - A **missing field** means the sensor had no valid value that second: that value is
   shown as `--`.
-- **No message for 3 s** (3 missed periods): every value is shown as `--`, since the
-  displayed data can no longer be trusted.
+- **Stale field:** a field not updated for more than `STALE_S` (3 s, `src/vehicle_state.h`)
+  is stale. At 1 Hz, one lost message is tolerated and the second one is reported.
+  The terminal shows the value with its age (`v=48.20(5s)`, useful for debugging);
+  the screen shows `--` (`valid = false` in `src/ui.h`).
+- **No message at all:** with `STALE_S`, every field becomes stale after 3 s. Not yet
+  reported on the terminal, which only prints when a message arrives (see
+  `DASHBOARD.md`, section 5, "Detect total silence").
+- **Retained message ignored:** right after subscribing, the broker sends the last
+  sample it kept. It can be hours old and would look fresh (its age is measured from
+  its arrival), so it is dropped. Cost: `--` for at most 1 s at startup.
+- **Duplicates and late messages ignored:** QoS 1 may deliver a message twice. A message
+  whose `ts` is not newer than the last accepted one is dropped, so a late message never
+  replaces a newer value. Messages without `ts` are accepted.
 
 ## 2. Published by the dashboard
 

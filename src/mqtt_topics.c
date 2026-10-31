@@ -27,7 +27,7 @@ typedef struct {
 } topic_entry_t;
 
 static const topic_entry_t k_topics[] = {
-    { "uosm/car1/tlm", handle_telemetry },
+    { TOPIC_TELEMETRY, handle_telemetry },
 };
 
 #define TOPIC_COUNT (sizeof(k_topics) / sizeof(k_topics[0]))

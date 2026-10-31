@@ -3,6 +3,12 @@
 
 #include "mqtt_decode.h" /* telemetry_t */
 
+/* A field not updated for longer than this is stale (seconds).
+ * The one threshold for every display: the terminal shows the value with its
+ * age, the screen shows "--" (ui.h, valid = false).
+ * 3 s at 1 Hz: one lost message is tolerated, the second one is reported. */
+#define STALE_S 3.0
+
 /* One time value per telemetry field, same names as telemetry_t.
  * Inside vehicle_state.c: when the field was last updated (seconds).
  * In a snapshot:          how old the field is (seconds). */

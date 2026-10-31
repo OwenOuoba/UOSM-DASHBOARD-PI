@@ -9,7 +9,7 @@
  * Rules:
  *  1. Every value comes with a valid flag. valid == false -> the screen shows "--".
  *     The core sets valid = false when the field was never received or is too old
- *     (see the stale timeout in docs/MQTT_TOPICS.md).
+ *     (older than STALE_S, defined in vehicle_state.h).
  *  2. The core fills a dashboard_state_t and calls ui_update() every 100 ms.
  *     The UI copies what it needs and never keeps the pointer.
  *  3. ui_init() and ui_update() touch LVGL: call them ONLY from the thread that

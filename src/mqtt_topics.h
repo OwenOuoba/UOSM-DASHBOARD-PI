@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/** Telemetry V2 topic (docs/MQTT_TOPICS.md). Used by the table and by the subscription. */
+#define TOPIC_TELEMETRY "uosm/car1/tlm"
+
 /** Function that receives each decoded telemetry message (e.g. to store it). */
 typedef void (*telemetry_handler_t)(const telemetry_t* telemetry);
 
