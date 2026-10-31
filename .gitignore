@@ -1,7 +1,11 @@
 # Build output
 build/
+build-*/
 cmake-build-*/
 
 # IDE settings (personal: each developer has their own)
 .idea/
 .vscode/
+
+# Python cache (tools/)
+__pycache__/
