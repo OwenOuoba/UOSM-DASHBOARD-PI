@@ -9,6 +9,7 @@ set(CORE_SOURCES
     src/mqtt_decode.c
     src/vehicle_state.c
     src/display.c
+    src/dashboard_state.c
     lib/cjson/cJSON.c
 )
 
@@ -33,10 +34,10 @@ if(UOSM_SIM)
     add_custom_command(TARGET ui_sim POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SDL2_ROOT}/bin/SDL2.dll $<TARGET_FILE_DIR:ui_sim>)
 else()
-    # The dashboard (Linux, libmosquitto)
-    add_executable(uosm_dashboard src/main.c ${CORE_SOURCES})
+    # The dashboard (Linux, libmosquitto), with the screen on /dev/fb0
+    add_executable(uosm_dashboard src/main.c ${CORE_SOURCES} src/screen.c src/ui.c src/ui_assets.c)
     target_include_directories(uosm_dashboard PRIVATE src lib/cjson)
-    target_link_libraries(uosm_dashboard PRIVATE mosquitto)
+    target_link_libraries(uosm_dashboard PRIVATE mosquitto lvgl m)
 endif()
 
 # Decoder tests, no broker needed: ./test_decode

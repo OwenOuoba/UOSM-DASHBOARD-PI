@@ -1,6 +1,8 @@
 #include "mqtt_topics.h"
 #include "vehicle_state.h"
 #include "display.h"
+#include "dashboard_state.h"
+#include "screen.h"
 
 #include <mosquitto.h>
 #include <signal.h>
@@ -15,6 +17,7 @@
 #define IDLE_SLEEP_MS   10     /* pause when there is no connection, so the loop does not spin */
 #define RECONNECT_S    2.0     /* time between two connection attempts */
 #define PRINT_PERIOD_S 1.0     /* terminal line period, independent of messages */
+#define SCREEN_PERIOD_S 0.1    /* screen refresh from the state (ui.h: every 100 ms) */
 #define KEEPALIVE_S      5     /* MQTT keep-alive: a dead link is detected in ~5-10 s (libmosquitto minimum) */
 
 static double now_s(void) {
@@ -115,6 +118,12 @@ int main(int argc, char** argv) {
     vehicle_state_init();
     mqtt_topics_set_telemetry_handler(on_telemetry);
 
+    /* No screen (unplugged, no access to /dev/fb0) is not fatal: the terminal keeps working. */
+    bool screen_ok = screen_init();
+    if (!screen_ok) {
+        fprintf(stderr, "No screen, terminal only\n");
+    }
+
     mosquitto_lib_init();
 
     struct mosquitto* mosq = mosquitto_new("uosm-dashboard", true, NULL);
@@ -141,6 +150,7 @@ int main(int argc, char** argv) {
      * so network, terminal (and later the screen) all keep running. */
     double next_retry = now_s() + RECONNECT_S;
     double next_print = 0;
+    double next_screen = 0;
 
     while (s_running) {
         double now = now_s();
@@ -171,8 +181,17 @@ int main(int argc, char** argv) {
             display_print(now);
         }
 
-        /* 3. Later, the screen: lv_timer_handler() every turn, and every 100 ms
-         *    snapshot -> dashboard_state_t -> ui_update() (see src/ui.h). */
+        /* 3. Screen: every SCREEN_PERIOD_S, state -> dashboard_state_t -> ui_update();
+         *    every turn, LVGL draws what changed. */
+        if (screen_ok) {
+            if (now >= next_screen) {
+                next_screen = now + SCREEN_PERIOD_S;
+                dashboard_state_t st;
+                dashboard_state_build(&st, now, s_mqtt_connected);
+                screen_update(&st);
+            }
+            screen_tick();
+        }
     }
 
     printf("Stopping\n");
