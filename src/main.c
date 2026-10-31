@@ -15,7 +15,7 @@
 #define IDLE_SLEEP_MS   10     /* pause when there is no connection, so the loop does not spin */
 #define RECONNECT_S    2.0     /* time between two connection attempts */
 #define PRINT_PERIOD_S 1.0     /* terminal line period, independent of messages */
-#define KEEPALIVE_S     60     /* MQTT keep-alive sent to the broker */
+#define KEEPALIVE_S      5     /* MQTT keep-alive: a dead link is detected in ~5-10 s (libmosquitto minimum) */
 
 static double now_s(void) {
     struct timespec t;

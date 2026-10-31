@@ -41,6 +41,7 @@ Needs the SDL2 MinGW development package in `../deps/SDL2-2.32.10/` (or pass `-D
 cmake -B build-sim -G Ninja -DUOSM_SIM=ON && cmake --build build-sim --target ui_sim
 ./build-sim/ui_sim                          # window: 30 s normal, 10 s "MQTT lost", repeated
 ./build-sim/ui_sim --shot normal.ppm lost.ppm   # no window: saves both screens
+./build-sim/ui_sim --size 1024x600              # another screen size (the layout scales)
 ```
 
 In CLion: a CMake profile with `-DUOSM_SIM=ON`, target `ui_sim`.

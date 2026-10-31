@@ -1,7 +1,7 @@
 /**
  * ui.h — the contract between the dashboard core and the screen (LVGL).
  *
- * The core (MQTT, vehicle_state, button, ping) decides WHAT is true.
+ * The core (MQTT, vehicle_state, button) decides WHAT is true.
  * The UI only decides HOW to show it: it never talks to MQTT, never reads
  * JSON, never handles the button. This is why the UI can be developed and
  * tested on a PC with fake values, without the car.
@@ -30,12 +30,13 @@ typedef struct {
 typedef struct {
     ui_value_t speed_kmh;        /* spd, Hall-effect speedometer                          */
     ui_value_t distance_m;       /* dist                                                  */
-    ui_value_t clock_ms;         /* current time, UTC epoch in ms (GPS ts or Pi clock);
+    ui_value_t clock_ms;         /* current time, UTC epoch in ms (GPS ts);
                                     the UI shows it in Ottawa local time (EST/EDT)        */
     ui_value_t run_time_s;       /* time since the run button was pressed (physical button,
                                     handled by the core)                                   */
-    ui_value_t network_ping_ms;  /* ping to the telemetry Pi (10.0.10.1, the car's router);
-                                    valid == false -> no answer                           */
+    int        run_number;       /* current run, counted from 1; 0 = no run started yet    */
+    ui_value_t previous_runs_s[3]; /* finished runs, [0] = the last one, then older;
+                                    valid == false -> no such run. The UI marks the best  */
 
     bool lights_valid;           /* false -> indicators shown as unknown (grey), not off   */
     bool headlight;              /* from lts, characters 1 to 5                            */

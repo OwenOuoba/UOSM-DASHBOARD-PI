@@ -9,9 +9,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Barlow Condensed SemiBold, TTF file bytes: drawn at any size with lv_tiny_ttf_create_data() */
-extern const uint8_t ui_font_barlow_condensed[];
-extern const size_t ui_font_barlow_condensed_size;
+/* Exo 2 italic, TTF file bytes (Latin only): drawn at any size with lv_tiny_ttf_create_data() */
+extern const uint8_t ui_font_exo2_semibold[];    /* labels, units */
+extern const size_t ui_font_exo2_semibold_size;
+extern const uint8_t ui_font_exo2_extrabold[];   /* numbers */
+extern const size_t ui_font_exo2_extrabold_size;
 
 /* Light icons, 56x56, alpha only (A8): the colour comes from the image_recolor style */
 extern const lv_image_dsc_t ui_icon_left;
