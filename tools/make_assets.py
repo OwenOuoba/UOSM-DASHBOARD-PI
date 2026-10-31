@@ -84,6 +84,19 @@ ICONS = [("left", icon_left), ("right", icon_right), ("headlight", icon_headligh
          ("running", icon_running), ("wiper", icon_wiper)]
 
 
+def without_gpos(font):
+    """Hides the GPOS table (kerning) by renaming its tag in the table directory.
+    LVGL 9.2.2 reads GPOS at the wrong offset (stbtt_KernTableCheck forgets + info->gpos)
+    and crashes on the Pi. Without GPOS, LVGL just draws without kerning."""
+    font = bytearray(font)
+    num_tables = int.from_bytes(font[4:6], "big")
+    for i in range(num_tables):
+        tag = 12 + 16 * i   # table directory: 12-byte header, then 16 bytes per table
+        if font[tag:tag + 4] == b"GPOS":
+            font[tag:tag + 4] = b"xPOS"   # unknown tag: ignored by every font reader
+    return bytes(font)
+
+
 def c_bytes(data):
     rows = [", ".join(f"0x{b:02x}" for b in data[i:i + 16]) for i in range(0, len(data), 16)]
     return "    " + ",\n    ".join(rows)
@@ -94,7 +107,7 @@ def main():
            '#include "ui_assets.h"', '']
     font_bytes = 0
     for name, path in FONTS:
-        font = path.read_bytes()
+        font = without_gpos(path.read_bytes())
         font_bytes += len(font)
         out += [f"/* {path.name} (SIL Open Font License, see assets/fonts/OFL.txt) */",
                 f"const uint8_t ui_font_{name}[] = {{", c_bytes(font), "};",
